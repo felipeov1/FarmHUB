@@ -1,5 +1,12 @@
+dependencies {
+    implementation("com.firebaseui:firebase-ui-auth:9.0.0")
+    implementation("com.facebook.android:facebook-android-sdk:18.1.3")
+}
 plugins {
     id("com.android.application")
+    // START: FlutterFire Configuration
+    id("com.google.gms.google-services")
+    // END: FlutterFire Configuration
     id("kotlin-android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")

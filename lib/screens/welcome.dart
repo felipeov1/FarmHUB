@@ -70,7 +70,9 @@ class _WelcomeState extends State<Welcome> {
                           ),
                         ),
                       ),
+
                       const SizedBox(width: 8),
+
                       GestureDetector(
                         onTap: () => setState(() => selectedLanguage = 'EN'),
                         child: Container(
@@ -91,7 +93,9 @@ class _WelcomeState extends State<Welcome> {
                     ],
                   ),
                 ),
+
                 const SizedBox(height: 30),
+
                 Text.rich(
                   TextSpan(
                     style: const TextStyle(
@@ -109,6 +113,7 @@ class _WelcomeState extends State<Welcome> {
                     ],
                   ),
                 ),
+
                 Text.rich(
                   TextSpan(
                     style: const TextStyle(
@@ -125,7 +130,9 @@ class _WelcomeState extends State<Welcome> {
                     ],
                   ),
                 ),
+
                 const SizedBox(height: 5),
+
                 const Text(
                   "Gerencie sua fazenda com precisão, "
                       "organize estoque e acompanhe o progresso.",
@@ -135,7 +142,9 @@ class _WelcomeState extends State<Welcome> {
                     color: Colors.black54,
                   ),
                 ),
+
                 const Spacer(),
+
                 Stack(
                   children: [
                     Container(
