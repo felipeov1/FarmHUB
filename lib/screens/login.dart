@@ -83,7 +83,7 @@ class _LoginState extends State<Login> {
             width: double.infinity,
             decoration: BoxDecoration(
               image: DecorationImage(
-                image: const AssetImage('images/login.png'),
+                image: const AssetImage('images/login.webp'),
                 fit: BoxFit.cover,
                 alignment: Alignment.bottomCenter,
                 colorFilter: ColorFilter.mode(
