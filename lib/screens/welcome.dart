@@ -24,7 +24,7 @@ class _WelcomeState extends State<Welcome> {
             width: double.infinity,
             decoration: const BoxDecoration(
               image: DecorationImage(
-                image: AssetImage('images/welcome.png'),
+                image: AssetImage('images/welcome.webp'),
                 fit: BoxFit.cover,
                 alignment: Alignment.bottomCenter,
               ),

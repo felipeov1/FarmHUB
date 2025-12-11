@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:farm_hub/screens/login.dart';
 import 'package:farm_hub/screens/welcome.dart';
 import 'package:flutter/material.dart';
 
@@ -13,7 +14,7 @@ void main() async {
   await Firebase.initializeApp();
 
   runApp(const MaterialApp(
-    home: Welcome(),
+    home: Login(),
     debugShowCheckedModeBanner: false,
   ));
 }
