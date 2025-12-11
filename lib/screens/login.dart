@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-
 import '../widgets/mainNavigation.dart';
 
 class Login extends StatefulWidget {
@@ -13,13 +12,33 @@ class Login extends StatefulWidget {
 class _LoginState extends State<Login> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
+
   var messageError = '';
   bool isLoading = false;
+  bool isLogin = true;
 
-  void auntentication() async {
+  void toggleAuthMode() {
+    setState(() {
+      isLogin = !isLogin;
+      messageError = '';
+      _emailController.clear();
+      _passwordController.clear();
+      _confirmPasswordController.clear();
+    });
+  }
+
+  void submitAuth() async {
     if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
       setState(() {
-        messageError = "Preencha o email e a senha!";
+        messageError = "Preencha todos os campos!";
+      });
+      return;
+    }
+
+    if (!isLogin && _passwordController.text != _confirmPasswordController.text) {
+      setState(() {
+        messageError = "As senhas não conferem!";
       });
       return;
     }
@@ -30,35 +49,47 @@ class _LoginState extends State<Login> {
     });
 
     try {
-      await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: _emailController.text,
-        password: _passwordController.text,
-      );
+      if (isLogin) {
+        await FirebaseAuth.instance.signInWithEmailAndPassword(
+          email: _emailController.text,
+          password: _passwordController.text,
+        );
+      } else {
+        await FirebaseAuth.instance.createUserWithEmailAndPassword(
+          email: _emailController.text,
+          password: _passwordController.text,
+        );
+      }
 
       setState(() => isLoading = false);
 
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => MainNavigation()),
-      );
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => MainNavigation()),
+        );
+      }
     } on FirebaseAuthException catch (e) {
       setState(() {
         isLoading = false;
         if (e.code == 'user-not-found') {
-          messageError = "Usuário não encontrado";
+          messageError = "Usuário não encontrado.";
         } else if (e.code == 'wrong-password') {
-          messageError = "Senha incorreta";
+          messageError = "Senha incorreta.";
+        } else if (e.code == 'email-already-in-use') {
+          messageError = "Este email já está cadastrado.";
+        } else if (e.code == 'weak-password') {
+          messageError = "A senha é muito fraca.";
         } else if (e.code == 'invalid-email') {
-          messageError = "Email inválido";
+          messageError = "Email inválido.";
         } else {
-          messageError =
-          "Erro de autenticação, verifique os dados e tente novamente.";
+          messageError = "Erro inesperado. Entre em contato com o suporte.";
         }
       });
     } catch (e) {
       setState(() {
         isLoading = false;
-        messageError = "Erro inesperado, reinicie o app ou contate o suporte.";
+        messageError = "Erro inesperado.";
       });
     }
   }
@@ -94,10 +125,10 @@ class _LoginState extends State<Login> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const Text(
-                      'Bem-vindo ao',
+                    Text(
+                      isLogin ? 'Bem-vindo ao' : 'Crie sua conta no',
                       textAlign: TextAlign.center,
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontSize: 20,
                         color: Colors.white,
                       ),
@@ -181,10 +212,30 @@ class _LoginState extends State<Login> {
                       style: const TextStyle(color: Colors.white),
                     ),
 
+                    if (!isLogin) ...[
+                      const SizedBox(height: 20),
+                      TextField(
+                        controller: _confirmPasswordController,
+                        obscureText: true,
+                        decoration: const InputDecoration(
+                          labelText: 'Confirmar Senha',
+                          labelStyle: TextStyle(color: Colors.white),
+                          border: OutlineInputBorder(),
+                          enabledBorder: OutlineInputBorder(
+                            borderSide: BorderSide(color: Colors.white),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderSide: BorderSide(color: Colors.white),
+                          ),
+                        ),
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                    ],
+
                     const SizedBox(height: 30),
 
                     ElevatedButton(
-                      onPressed: isLoading ? null : auntentication,
+                      onPressed: isLoading ? null : submitAuth,
                       style: ElevatedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 16),
                         shape: RoundedRectangleBorder(
@@ -193,13 +244,25 @@ class _LoginState extends State<Login> {
                       ),
                       child: isLoading
                           ? const CircularProgressIndicator(color: Colors.white)
-                          : const Text(
-                        'Entrar',
-                        style: TextStyle(color: Colors.black),
+                          : Text(
+                        isLogin ? 'Entrar' : 'Cadastrar',
+                        style: const TextStyle(color: Colors.black),
                       ),
                     ),
 
-                    const SizedBox(height: 70),
+                    const SizedBox(height: 20),
+
+                    TextButton(
+                      onPressed: toggleAuthMode,
+                      child: Text(
+                        isLogin
+                            ? 'Não tem uma conta? Cadastre-se'
+                            : 'Já tem uma conta? Entre',
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                    ),
+
+                    const SizedBox(height: 50),
                   ],
                 ),
               ),

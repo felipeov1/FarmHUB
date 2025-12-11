@@ -1,6 +1,7 @@
 dependencies {
     implementation("com.firebaseui:firebase-ui-auth:9.0.0")
     implementation("com.facebook.android:facebook-android-sdk:18.1.3")
+
 }
 plugins {
     id("com.android.application")

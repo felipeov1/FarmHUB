@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../main.dart';
+import 'products.dart';
 
 class Home extends StatefulWidget {
   final Function(int) onNavigate;
@@ -39,7 +40,8 @@ class _HomeState extends State<Home> {
       setState(() {
         isLoadingProduct = false;
         hasError = "Não foi possível carregar os produtos.";
-      });    }
+      });
+    }
   }
 
   @override
@@ -65,7 +67,6 @@ class _HomeState extends State<Home> {
                     style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                   ),
                 ),
-
                 TextButton(
                   onPressed: () {
                     widget.onNavigate(1);
@@ -80,97 +81,115 @@ class _HomeState extends State<Home> {
                 ),
               ],
             ),
-
             const SizedBox(height: 15),
-
             SizedBox(
               height: 160,
               child: isLoadingProduct
                   ? const Center(
-                      child: CircularProgressIndicator(
-                        color: Colors.green,
-                        strokeWidth: 2,
-                      ),
-                    )
+                child: CircularProgressIndicator(
+                  color: Colors.green,
+                  strokeWidth: 2,
+                ),
+              )
                   : products.isEmpty
                   ? const Center(
-                      child: Text(
-                        'Nenhum produto encontrado.',
-                        style: TextStyle(color: Colors.grey),
-                      ),
-                    )
+                child: Text(
+                  'Nenhum produto encontrado.',
+                  style: TextStyle(color: Colors.grey),
+                ),
+              )
                   : ListView.builder(
-                      scrollDirection: Axis.horizontal,
-                      itemCount: products.length,
-                      itemBuilder: (context, index) {
-                        final item = products[index];
+                scrollDirection: Axis.horizontal,
+                itemCount: products.length,
+                itemBuilder: (context, index) {
+                  final item = products[index];
 
-                        return Container(
-                          width: 160,
-                          margin: const EdgeInsets.only(right: 12),
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(12),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.1),
-                                blurRadius: 8,
-                                offset: const Offset(0, 4),
-                              ),
-                            ],
+                  return GestureDetector(
+                    onTap: () async {
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => ProductDetailsScreen(
+                            productData: item,
                           ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(8),
-                                child: products[index]['imageUrl'] != null &&
-                                    products[index]['imageUrl'].isNotEmpty
-                                    ? Image.network(
-                                  products[index]['imageUrl'],
-                                  width: 60,
-                                  height: 60,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (context, error, stackTrace) {
-                                    return Container(
-                                      width: 60,
-                                      height: 60,
-                                      color: Colors.grey[200],
-                                      child: Icon(Icons.broken_image, color: Colors.grey),
-                                    );
-                                  },
-                                )
-                                    : Container(
+                        ),
+                      );
+                      getProducts();
+                    },
+                    child: Container(
+                      width: 160,
+                      margin: const EdgeInsets.only(right: 12),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.1),
+                            blurRadius: 8,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: products[index]['imageUrl'] !=
+                                null &&
+                                products[index]['imageUrl']
+                                    .isNotEmpty
+                                ? Image.network(
+                              products[index]['imageUrl'],
+                              width: 60,
+                              height: 60,
+                              fit: BoxFit.cover,
+                              errorBuilder:
+                                  (context, error, stackTrace) {
+                                return Container(
                                   width: 60,
                                   height: 60,
                                   color: Colors.grey[200],
-                                  child: Icon(Icons.image_not_supported, color: Colors.grey),
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                item['name'] ?? 'Sem nome',
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                "Qtd:${item['quantity']?.toString() ?? '0'}",
-                                style: TextStyle(color: Colors.grey[700]),
-                              ),
-                              Text(
-                                "R\$ ${item['price']?.toStringAsFixed(2) ?? '0.00'}",
-                                style: TextStyle(color: Colors.grey[700]),
-                              ),
-                            ],
+                                  child: Icon(
+                                      Icons.broken_image,
+                                      color: Colors.grey),
+                                );
+                              },
+                            )
+                                : Container(
+                              width: 60,
+                              height: 60,
+                              color: Colors.grey[200],
+                              child: Icon(
+                                  Icons.image_not_supported,
+                                  color: Colors.grey),
+                            ),
                           ),
-                        );
-                      },
+                          const SizedBox(height: 8),
+                          Text(
+                            item['name'] ?? 'Sem nome',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            "Qtd:${item['quantity']?.toString() ?? '0'}",
+                            style: TextStyle(color: Colors.grey[700]),
+                          ),
+                          Text(
+                            "R\$ ${item['price']?.toStringAsFixed(2) ?? '0.00'}",
+                            style: TextStyle(color: Colors.grey[700]),
+                          ),
+                        ],
+                      ),
                     ),
+                  );
+                },
+              ),
             ),
           ],
         ),
