@@ -3,10 +3,12 @@ import 'package:image_picker/image_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:farm_hub/main.dart';
 import 'package:firebase_storage/firebase_storage.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 
 class Products extends StatefulWidget {
-  const Products({super.key, required void Function(int) onNavigate});
+  final dynamic onNavigate;
+
+  const Products({super.key, required this.onNavigate});
 
   @override
   State<Products> createState() => _ProductsState();
@@ -16,76 +18,106 @@ class _ProductsState extends State<Products> {
   bool isLoadingProduct = true;
   List<Map<String, dynamic>> products = [];
   File? selectedImage;
-
   TextEditingController fieldName = TextEditingController();
   TextEditingController fieldQuantity = TextEditingController();
   TextEditingController fieldPrice = TextEditingController();
   TextEditingController fieldDescription = TextEditingController();
 
-  Future<void> createProduct(
-    String name,
-    int quantity,
-    double price,
-    String description,
-    File? imageFile,
-  ) async {
+  Future<void> runWithTimeout(Future<void> Function() action, BuildContext context) async {
+    bool online = await isOnline();
+
     try {
+      await action().timeout(
+        const Duration(seconds: 4),
+        onTimeout: () {
+          if (!online) {
+            throw 'offline_timeout';
+          } else {
+            throw 'online_timeout';
+          }
+        },
+      );
+    } catch (e) {
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            e == 'offline_timeout'
+                ? "Operação concluída offline."
+                : "Ocorreu um problema, tente novamente.",
+          ),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
+  }
+
+
+  Future<bool> isOnline() async {
+    var connectivityResult = await (Connectivity().checkConnectivity());
+    if (connectivityResult == ConnectivityResult.none) {
+      return false;
+    }
+    try {
+      final result = await InternetAddress.lookup(
+        'google.com',
+      ).timeout(const Duration(seconds: 3));
+      return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  Future<void> createProduct(BuildContext context) async {
+    await runWithTimeout(() async {
+      bool online = await isOnline();
       String imageUrl = '';
 
-      if (imageFile != null) {
-        String fileName =
-            'product_${DateTime.now().millisecondsSinceEpoch}.jpg';
-        Reference storageRef = FirebaseStorage.instance.ref().child(
+      if (selectedImage != null && online) {
+        final fileName = 'product_${DateTime.now().millisecondsSinceEpoch}.jpg';
+        final ref = FirebaseStorage.instance.ref().child(
           'product_images/$fileName',
         );
-        UploadTask uploadTask = storageRef.putFile(imageFile);
-        TaskSnapshot taskSnapshot = await uploadTask;
-        imageUrl = await taskSnapshot.ref.getDownloadURL();
+        final snap = await ref.putFile(selectedImage!);
+        imageUrl = await snap.ref.getDownloadURL();
       }
 
       await db.collection("products").add({
-        "name": name,
-        "quantity": quantity,
-        "price": price,
-        "description": description,
+        "name": fieldName.text,
+        "quantity": int.tryParse(fieldQuantity.text) ?? 0,
+        "price": double.tryParse(fieldPrice.text) ?? 0.0,
+        "description": fieldDescription.text,
         "imageUrl": imageUrl,
       });
 
-      getProducts();
-    } catch (e) {
-      print(e);
-    }
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              online
+                  ? "Produto salvo com sucesso!"
+                  : "Produto salvo offline (sem imagem)!",
+            ),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    }, context);
   }
 
-  void getProducts() async {
-    try {
-      setState(() {
-        isLoadingProduct = true;
-      });
-
-      final snapshot = await db.collection("products").get();
-
+  void getProducts() {
+    db.collection("products").snapshots().listen((snapshot) {
       final productsFromDb = snapshot.docs.map((doc) {
         return {"id": doc.id, ...doc.data()};
       }).toList();
-
-      setState(() {
-        products = productsFromDb;
-        isLoadingProduct = false;
-      });
-    } catch (e) {
-      print(e);
-    }
-  }
-
-  Future<void> pickImage() async {
-    final ImagePicker picker = ImagePicker();
-    final XFile? image = await picker.pickImage(source: ImageSource.gallery);
-    if (image != null) {
-      setState(() {
-        selectedImage = File(image.path);
-      });
-    }
+      if (mounted) {
+        setState(() {
+          products = productsFromDb;
+          isLoadingProduct = false;
+        });
+      }
+    });
   }
 
   @override
@@ -98,13 +130,13 @@ class _ProductsState extends State<Products> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: Padding(
-        padding: EdgeInsets.only(top: 35, left: 20, right: 20),
+        padding: const EdgeInsets.only(top: 35, left: 20, right: 20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                Expanded(
+                const Expanded(
                   child: Center(
                     child: Text(
                       "Todos Produtos",
@@ -127,30 +159,17 @@ class _ProductsState extends State<Products> {
                       fieldPrice.clear();
                       fieldDescription.clear();
                     });
-
                     showDialog(
                       context: context,
                       builder: (context) {
                         bool isSaving = false;
                         return StatefulBuilder(
                           builder: (context, setDialogState) {
-                            Future<void> pickImageForDialog() async {
-                              final ImagePicker picker = ImagePicker();
-                              final XFile? image = await picker.pickImage(
-                                source: ImageSource.gallery,
-                              );
-                              if (image != null) {
-                                setDialogState(() {
-                                  selectedImage = File(image.path);
-                                });
-                              }
-                            }
-
                             return AlertDialog(
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
                               ),
-                              title: Text(
+                              title: const Text(
                                 "ADICIONAR PRODUTO",
                                 style: TextStyle(
                                   fontWeight: FontWeight.w600,
@@ -163,7 +182,7 @@ class _ProductsState extends State<Products> {
                                   children: [
                                     TextField(
                                       controller: fieldName,
-                                      decoration: InputDecoration(
+                                      decoration: const InputDecoration(
                                         labelText: "Nome",
                                         labelStyle: TextStyle(
                                           color: Colors.black,
@@ -172,7 +191,7 @@ class _ProductsState extends State<Products> {
                                     ),
                                     TextField(
                                       controller: fieldDescription,
-                                      decoration: InputDecoration(
+                                      decoration: const InputDecoration(
                                         labelText: "Descrição",
                                         labelStyle: TextStyle(
                                           color: Colors.black,
@@ -181,7 +200,7 @@ class _ProductsState extends State<Products> {
                                     ),
                                     TextField(
                                       controller: fieldQuantity,
-                                      decoration: InputDecoration(
+                                      decoration: const InputDecoration(
                                         labelText: "Quantidade",
                                         labelStyle: TextStyle(
                                           color: Colors.black,
@@ -191,7 +210,7 @@ class _ProductsState extends State<Products> {
                                     ),
                                     TextField(
                                       controller: fieldPrice,
-                                      decoration: InputDecoration(
+                                      decoration: const InputDecoration(
                                         labelText: "Preço",
                                         labelStyle: TextStyle(
                                           color: Colors.black,
@@ -199,16 +218,16 @@ class _ProductsState extends State<Products> {
                                       ),
                                       keyboardType: TextInputType.number,
                                     ),
-                                    SizedBox(height: 20),
+                                    const SizedBox(height: 20),
                                     selectedImage == null
-                                        ? Text(
+                                        ? const Text(
                                             'Nenhuma imagem selecionada.',
                                             style: TextStyle(
                                               color: Colors.grey,
                                             ),
                                           )
                                         : Container(
-                                            padding: EdgeInsets.symmetric(
+                                            padding: const EdgeInsets.symmetric(
                                               horizontal: 12,
                                               vertical: 8,
                                             ),
@@ -231,17 +250,43 @@ class _ProductsState extends State<Products> {
                                               overflow: TextOverflow.ellipsis,
                                             ),
                                           ),
-                                    SizedBox(height: 10),
+                                    const SizedBox(height: 10),
                                     TextButton.icon(
-                                      icon: Icon(
+                                      icon: const Icon(
                                         Icons.image,
                                         color: Colors.green,
                                       ),
-                                      label: Text(
+                                      label: const Text(
                                         'Selecionar Imagem',
                                         style: TextStyle(color: Colors.green),
                                       ),
-                                      onPressed: pickImageForDialog,
+                                      onPressed: () async {
+                                        bool online = await isOnline();
+                                        if (!online) {
+                                          ScaffoldMessenger.of(
+                                            context,
+                                          ).showSnackBar(
+                                            const SnackBar(
+                                              content: Text(
+                                                "Sem internet. Você pode salvar sem imagem e adicionar depois.",
+                                              ),
+                                              backgroundColor: Colors.orange,
+                                            ),
+                                          );
+                                          return;
+                                        }
+                                        final ImagePicker picker =
+                                            ImagePicker();
+                                        final XFile? image = await picker
+                                            .pickImage(
+                                              source: ImageSource.gallery,
+                                            );
+                                        if (image != null) {
+                                          setDialogState(() {
+                                            selectedImage = File(image.path);
+                                          });
+                                        }
+                                      },
                                     ),
                                   ],
                                 ),
@@ -252,10 +297,10 @@ class _ProductsState extends State<Products> {
                                     backgroundColor: Colors.white,
                                     foregroundColor: Colors.grey,
                                   ),
-                                  onPressed: () {
-                                    Navigator.pop(context);
-                                  },
-                                  child: Text("Cancelar"),
+                                  onPressed: isSaving
+                                      ? null
+                                      : () => Navigator.pop(context),
+                                  child: const Text("Cancelar"),
                                 ),
                                 ElevatedButton(
                                   style: ElevatedButton.styleFrom(
@@ -265,39 +310,19 @@ class _ProductsState extends State<Products> {
                                   onPressed: isSaving
                                       ? null
                                       : () async {
-                                          setDialogState(() {
-                                            isSaving = true;
-                                          });
-                                          await createProduct(
-                                            fieldName.text,
-                                            int.tryParse(fieldQuantity.text) ??
-                                                0,
-                                            double.tryParse(fieldPrice.text) ??
-                                                0.0,
-                                            fieldDescription.text,
-                                            selectedImage,
-                                          );
-                                          if (context.mounted) {
-                                            Navigator.pop(context);
-                                          }
+                                          setDialogState(() => isSaving = true);
+                                          await createProduct(context);
                                         },
                                   child: isSaving
-                                      ? Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            SizedBox(
-                                              width: 16,
-                                              height: 16,
-                                              child: CircularProgressIndicator(
-                                                color: Colors.white,
-                                                strokeWidth: 2,
-                                              ),
-                                            ),
-                                            SizedBox(width: 10),
-                                            Text("Salvando..."),
-                                          ],
+                                      ? const SizedBox(
+                                          width: 16,
+                                          height: 16,
+                                          child: CircularProgressIndicator(
+                                            color: Colors.white,
+                                            strokeWidth: 2,
+                                          ),
                                         )
-                                      : Text("Salvar"),
+                                      : const Text("Salvar"),
                                 ),
                               ],
                             );
@@ -306,28 +331,28 @@ class _ProductsState extends State<Products> {
                       },
                     );
                   },
-                  child: Icon(Icons.add),
+                  child: const Icon(Icons.add),
                 ),
               ],
             ),
-            SizedBox(height: 16),
+            const SizedBox(height: 16),
             Expanded(
               child: isLoadingProduct
-                  ? Center(
+                  ? const Center(
                       child: CircularProgressIndicator(color: Colors.green),
                     )
                   : products.isEmpty
-                  ? Center(child: Text('Nenhum produto encontrado.'))
+                  ? const Center(child: Text('Nenhum produto encontrado.'))
                   : ListView.builder(
                       itemCount: products.length,
                       itemBuilder: (context, index) {
                         final product = products[index];
                         return Container(
-                          margin: EdgeInsets.symmetric(vertical: 6),
+                          margin: const EdgeInsets.symmetric(vertical: 6),
                           decoration: BoxDecoration(
                             color: Colors.white,
                             borderRadius: BorderRadius.circular(12),
-                            boxShadow: [
+                            boxShadow: const [
                               BoxShadow(
                                 color: Colors.black12,
                                 blurRadius: 6,
@@ -336,8 +361,8 @@ class _ProductsState extends State<Products> {
                             ],
                           ),
                           child: ListTile(
-                            onTap: () async {
-                              await Navigator.push(
+                            onTap: () {
+                              Navigator.push(
                                 context,
                                 MaterialPageRoute(
                                   builder: (context) => ProductDetailsScreen(
@@ -345,7 +370,6 @@ class _ProductsState extends State<Products> {
                                   ),
                                 ),
                               );
-                              getProducts();
                             },
                             leading: ClipRRect(
                               borderRadius: BorderRadius.circular(8),
@@ -357,18 +381,27 @@ class _ProductsState extends State<Products> {
                                       width: 60,
                                       height: 60,
                                       fit: BoxFit.cover,
+                                      errorBuilder: (ctx, err, stack) =>
+                                          Container(
+                                            width: 60,
+                                            height: 60,
+                                            color: Colors.grey[200],
+                                            child: const Icon(
+                                              Icons.image_not_supported,
+                                            ),
+                                          ),
                                     )
                                   : Container(
                                       width: 60,
                                       height: 60,
                                       color: Colors.grey[200],
-                                      child: Icon(Icons.image),
+                                      child: const Icon(Icons.image),
                                     ),
                             ),
                             title: Text(product["name"] ?? 'Sem nome'),
                             subtitle: Text("Qtd: ${product['quantity']}"),
                             trailing: Text(
-                              "R\$${product['price']?.toStringAsFixed(2)}",
+                              "R\$ ${product['price']?.toStringAsFixed(2)}",
                             ),
                           ),
                         );
@@ -384,9 +417,7 @@ class _ProductsState extends State<Products> {
 
 class ProductDetailsScreen extends StatefulWidget {
   final Map<String, dynamic> productData;
-
   const ProductDetailsScreen({super.key, required this.productData});
-
   @override
   State<ProductDetailsScreen> createState() => _ProductDetailsScreenState();
 }
@@ -399,8 +430,27 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
   bool isSaving = false;
   bool isDeleting = false;
   bool isEditing = false;
-
   File? newImageFile;
+
+  Future<void> runWithTimeout(Function action, BuildContext context) async {
+    try {
+      await Future.any(
+        [
+              action(),
+              Future.delayed(const Duration(seconds: 4), () => throw 'timeout'),
+            ]
+            as Iterable<Future<dynamic>>,
+      );
+    } catch (e) {
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Operação concluída offline."),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
+  }
 
   @override
   void initState() {
@@ -415,7 +465,35 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
     quantity = widget.productData['quantity'] ?? 0;
   }
 
+  Future<bool> isOnline() async {
+    var connectivityResult = await (Connectivity().checkConnectivity());
+    if (connectivityResult == ConnectivityResult.none) {
+      return false;
+    }
+    try {
+      final result = await InternetAddress.lookup(
+        'google.com',
+      ).timeout(const Duration(seconds: 3));
+      return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+    } catch (e) {
+      return false;
+    }
+  }
+
   Future<void> pickNewImage() async {
+    bool online = await isOnline();
+    if (!online) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            "Sem internet. Você pode editar tudo, menos trocar a imagem.",
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
     final ImagePicker picker = ImagePicker();
     final XFile? image = await picker.pickImage(source: ImageSource.gallery);
     if (image != null) {
@@ -427,18 +505,17 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
 
   Future<void> updateProduct() async {
     setState(() => isSaving = true);
-    try {
+    await runWithTimeout(() async {
+      bool online = await isOnline();
       String imageUrl = widget.productData['imageUrl'] ?? '';
 
-      if (newImageFile != null) {
-        String fileName =
-            'product_${DateTime.now().millisecondsSinceEpoch}.jpg';
-        Reference storageRef = FirebaseStorage.instance.ref().child(
+      if (newImageFile != null && online) {
+        final fileName = 'product_${DateTime.now().millisecondsSinceEpoch}.jpg';
+        final ref = FirebaseStorage.instance.ref().child(
           'product_images/$fileName',
         );
-        UploadTask uploadTask = storageRef.putFile(newImageFile!);
-        TaskSnapshot taskSnapshot = await uploadTask;
-        imageUrl = await taskSnapshot.ref.getDownloadURL();
+        final snap = await ref.putFile(newImageFile!);
+        imageUrl = await snap.ref.getDownloadURL();
       }
 
       await db.collection("products").doc(widget.productData['id']).update({
@@ -449,65 +526,60 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
         "imageUrl": imageUrl,
       });
 
-      setState(() {
-        isSaving = false;
-        isEditing = false;
-        newImageFile = null;
-      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            online
+                ? "Atualizado com sucesso!"
+                : "Atualizado offline (sem imagem)!",
+          ),
+          backgroundColor: Colors.green,
+        ),
+      );
 
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text("Atualizado com sucesso!")));
-        Navigator.pop(context);
-      }
-    } catch (e) {
-      print(e);
-      setState(() => isSaving = false);
-    }
+      setState(() => isEditing = false);
+    }, context);
+    setState(() => isSaving = false);
   }
 
   Future<void> deleteProduct() async {
     setState(() => isDeleting = true);
-    try {
+    await runWithTimeout(() async {
+      bool online = await isOnline();
       String? imageUrl = widget.productData['imageUrl'];
-      if (imageUrl != null && imageUrl.isNotEmpty) {
-        try {
-          await FirebaseStorage.instance.refFromURL(imageUrl).delete();
-        } catch (e) {
-          print(e);
-        }
-      }
 
       await db.collection("products").doc(widget.productData['id']).delete();
 
-      if (mounted) {
-        Navigator.pop(context);
+      if (online && imageUrl != null && imageUrl.isNotEmpty) {
+        try {
+          await FirebaseStorage.instance.refFromURL(imageUrl).delete();
+        } catch (_) {}
       }
-    } catch (e) {
-      print(e);
-      setState(() => isDeleting = false);
-    }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            online
+                ? "Produto excluído com sucesso!"
+                : "Produto excluído offline!",
+          ),
+          backgroundColor: Colors.green,
+        ),
+      );
+
+      Navigator.pop(context);
+    }, context);
+    setState(() => isDeleting = false);
   }
 
-  void incrementQuantity() {
-    setState(() {
-      quantity++;
-    });
-  }
-
+  void incrementQuantity() => setState(() => quantity++);
   void decrementQuantity() {
-    if (quantity > 0) {
-      setState(() {
-        quantity--;
-      });
-    }
+    if (quantity > 0) setState(() => quantity--);
   }
 
   @override
   Widget build(BuildContext context) {
     ImageProvider? imageProvider;
-
     if (newImageFile != null) {
       imageProvider = FileImage(newImageFile!);
     } else if (widget.productData['imageUrl'] != null &&
@@ -524,16 +596,12 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
         actions: [
           if (!isEditing)
             IconButton(
-              icon: Icon(Icons.edit, color: Colors.green),
-              onPressed: () {
-                setState(() {
-                  isEditing = true;
-                });
-              },
+              icon: const Icon(Icons.edit, color: Colors.green),
+              onPressed: () => setState(() => isEditing = true),
             ),
           if (isEditing)
             IconButton(
-              icon: Icon(Icons.close, color: Colors.red),
+              icon: const Icon(Icons.close, color: Colors.red),
               onPressed: () {
                 setState(() {
                   isEditing = false;
@@ -581,7 +649,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                       width: double.infinity,
                       height: 250,
                       color: Colors.black38,
-                      child: Center(
+                      child: const Center(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
@@ -601,7 +669,6 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                 ],
               ),
             ),
-
             Padding(
               padding: const EdgeInsets.all(20.0),
               child: isEditing ? _buildEditForm() : _buildViewMode(),
@@ -622,7 +689,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
             Expanded(
               child: Text(
                 nameController.text,
-                style: TextStyle(
+                style: const TextStyle(
                   fontSize: 26,
                   fontWeight: FontWeight.bold,
                   color: Colors.black87,
@@ -630,167 +697,101 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
               ),
             ),
             Container(
-              padding: EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
               decoration: BoxDecoration(
                 color: Colors.green.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
-                "Estoque: $quantity",
+                "Qtd: $quantity",
                 style: TextStyle(
-                  color: Colors.green[800],
-                  fontWeight: FontWeight.bold,
+                  color: Colors.green.shade800,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
             ),
           ],
         ),
-        SizedBox(height: 10),
-
+        const SizedBox(height: 10),
         Text(
-          "R\$ ${double.tryParse(priceController.text)?.toStringAsFixed(2)}",
+          "Preço: R\$${priceController.text}",
           style: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.w600,
-            color: Colors.green,
-          ),
-        ),
-        SizedBox(height: 20),
-
-        Text(
-          "Descrição",
-          style: TextStyle(
-            fontSize: 16,
+            fontSize: 20,
             fontWeight: FontWeight.bold,
-            color: Colors.grey[800],
+            color: Colors.green.shade700,
           ),
         ),
-        SizedBox(height: 5),
+        const SizedBox(height: 20),
         Text(
-          descriptionController.text.isEmpty
-              ? "Sem descrição."
-              : descriptionController.text,
-          style: TextStyle(fontSize: 15, color: Colors.grey[600], height: 1.5),
+          descriptionController.text,
+          style: const TextStyle(fontSize: 16, color: Colors.black87),
         ),
-
-        SizedBox(height: 40),
       ],
     );
   }
 
   Widget _buildEditForm() {
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         TextField(
           controller: nameController,
-          decoration: InputDecoration(
-            labelText: "Nome",
-            border: OutlineInputBorder(),
-            filled: true,
-            fillColor: Colors.grey[50],
-          ),
+          decoration: const InputDecoration(labelText: "Nome"),
         ),
-        SizedBox(height: 15),
-
-        TextField(
-          controller: descriptionController,
-          decoration: InputDecoration(
-            labelText: "Descrição",
-            border: OutlineInputBorder(),
-            filled: true,
-            fillColor: Colors.grey[50],
-          ),
-          maxLines: 4,
-        ),
-        SizedBox(height: 15),
-
         TextField(
           controller: priceController,
+          decoration: const InputDecoration(labelText: "Preço"),
           keyboardType: TextInputType.number,
-          decoration: InputDecoration(
-            labelText: "Preço (R\$)",
-            border: OutlineInputBorder(),
-            filled: true,
-            fillColor: Colors.grey[50],
-          ),
         ),
-        SizedBox(height: 20),
-
-        Text(
-          "Ajustar Estoque",
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+        TextField(
+          controller: descriptionController,
+          decoration: const InputDecoration(labelText: "Descrição"),
         ),
-        SizedBox(height: 10),
+        const SizedBox(height: 20),
         Row(
-          mainAxisAlignment: MainAxisAlignment.center,
           children: [
+            const Text("Quantidade:", style: TextStyle(fontSize: 16)),
+            const SizedBox(width: 10),
             IconButton(
               onPressed: decrementQuantity,
-              icon: Icon(Icons.remove_circle, color: Colors.red, size: 40),
+              icon: const Icon(Icons.remove_circle, color: Colors.red),
             ),
-            Container(
-              margin: EdgeInsets.symmetric(horizontal: 20),
-              padding: EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.grey.shade300),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                "$quantity",
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-              ),
+            Text(
+              "$quantity",
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
             IconButton(
               onPressed: incrementQuantity,
-              icon: Icon(Icons.add_circle, color: Colors.green, size: 40),
+              icon: const Icon(Icons.add_circle, color: Colors.green),
             ),
           ],
         ),
-
-        SizedBox(height: 30),
-
-        Row(
-          children: [
-            Expanded(
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red[50],
-                  foregroundColor: Colors.red,
-                  padding: EdgeInsets.symmetric(vertical: 15),
-                ),
-                onPressed: isDeleting ? null : deleteProduct,
-                child: isDeleting
-                    ? SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : Text("Excluir"),
-              ),
-            ),
-            SizedBox(width: 15),
-            Expanded(
-              child: ElevatedButton(
+        const SizedBox(height: 20),
+        isSaving
+            ? const Center(
+                child: CircularProgressIndicator(color: Colors.green),
+              )
+            : ElevatedButton(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.green,
                   foregroundColor: Colors.white,
-                  padding: EdgeInsets.symmetric(vertical: 15),
+                  minimumSize: const Size(double.infinity, 50),
                 ),
-                onPressed: isSaving ? null : updateProduct,
-                child: isSaving
-                    ? SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                          strokeWidth: 2,
-                        ),
-                      )
-                    : Text("Salvar"),
+                onPressed: (isSaving || isDeleting) ? null : updateProduct,
+                child: const Text("Salvar Alterações"),
               ),
-            ),
-          ],
-        ),
+        const SizedBox(height: 20),
+        isDeleting
+            ? const Center(child: CircularProgressIndicator(color: Colors.red))
+            : ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size(double.infinity, 50),
+                ),
+                onPressed: (isSaving || isDeleting) ? null : deleteProduct,
+                child: const Text("Excluir Produto"),
+              ),
       ],
     );
   }

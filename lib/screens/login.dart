@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../widgets/mainNavigation.dart';
@@ -49,6 +50,11 @@ class _LoginState extends State<Login> {
     });
 
     try {
+      final result = await InternetAddress.lookup('google.com');
+      if (result.isEmpty || result[0].rawAddress.isEmpty) {
+        throw SocketException("No internet");
+      }
+
       if (isLogin) {
         await FirebaseAuth.instance.signInWithEmailAndPassword(
           email: _emailController.text,
@@ -69,11 +75,19 @@ class _LoginState extends State<Login> {
           MaterialPageRoute(builder: (_) => MainNavigation()),
         );
       }
+    } on SocketException catch (_) {
+      setState(() {
+        isLoading = false;
+        messageError =
+        "Sem conexão com a internet. Verifique sua conexão e tente novamente.";
+      });
     } on FirebaseAuthException catch (e) {
       setState(() {
         isLoading = false;
-        if (e.code == 'user-not-found') {
-          messageError = "Usuário não encontrado.";
+
+        if (e.code == 'user-not-found' || e.code == 'invalid-credential') {
+
+          messageError = "Email ou senha incorretos.";
         } else if (e.code == 'wrong-password') {
           messageError = "Senha incorreta.";
         } else if (e.code == 'email-already-in-use') {
@@ -83,13 +97,15 @@ class _LoginState extends State<Login> {
         } else if (e.code == 'invalid-email') {
           messageError = "Email inválido.";
         } else {
-          messageError = "Erro inesperado. Entre em contato com o suporte.";
+          messageError = "Erro inesperado, por favor entrar em contato com o suporte"
+              "";
         }
       });
     } catch (e) {
       setState(() {
         isLoading = false;
-        messageError = "Erro inesperado.";
+        print("Erro Inesperado Detalhado: $e");
+        messageError = "Erro inesperado. Tente novamente.";
       });
     }
   }
